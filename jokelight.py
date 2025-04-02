@@ -20,8 +20,6 @@ import sys
 import shutil
 LARGEFONT = ("Verdana", 35)
 
-#whisper_installation="python -m pip install git+https://github.com/openai/whisper.git"
-#os.system(whisper_installation)
 
 model = YOLO("best.pt")
 global userid
@@ -29,8 +27,8 @@ global faces
 global tags
 global filename
 bool = False
-face_cascade_name = "C:\\Users\\Annabelle Cheverton\\PycharmProjects\\Popup\\.venv\\Lib\\site-packages\\cv2\\data\\haarcascade_frontalface_alt.xml"  # args.face_cascade
-eyes_cascade_name = "C:\\Users\\Annabelle Cheverton\\PycharmProjects\\Popup\\.venv\\Lib\\site-packages\\cv2\\data\\haarcascade_eye_tree_eyeglasses.xml"  # args.eyes_cascade
+face_cascade_name = ".\\face.xml"  # args.face_cascade
+eyes_cascade_name = ".\\eyes.xml"  # args.eyes_cascade
 face_cascade = cv.CascadeClassifier()
 eyes_cascade = cv.CascadeClassifier()
 if not face_cascade.load(cv.samples.findFile(face_cascade_name)):
@@ -65,34 +63,19 @@ def detectAndDisplay(screen,framename):
                 frame = cv.resize(frame, (48, 48), interpolation=cv.INTER_AREA)
 
         frame = cv.resize(frame, (48, 48), interpolation=cv.INTER_LINEAR)
-        print (framename)
+        #print (framename)
         results = model(frame)
         r = results[0]
         classes = r.boxes.cls.tolist()
         for g in range(len(classes)):
             class_id = classes[g]
-            print(class_id)
+            #print(class_id)
             classlist.append(class_id)
-        cv.imwrite(framename, frame)
         return classlist
-
+for item in os.listdir("."):
+    if item.endswith(".srt") or item.endswith(".txt") or item.endswith(".json") or item.endswith(".tsv") or item.endswith(".vtt"):
+        os.remove(item)
 def process():
-    '''
-    print("file loaded")
-    returndic = []
-    folder = 'videos'
-    for filename in os.listdir(folder):
-        file_path = os.path.join(folder, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        except Exception as e:
-            print('Failed to delete %s. Reason: %s' % (file_path, e))
-    shutil.copyfile(vidpath, (os.path.join('videos', 'out.mp4')))
-    '''
-
     returndic = []
     for vid in os.listdir('videos'):
         vidmp3 = (vid[:-4])+'.mp3'
@@ -115,7 +98,7 @@ def process():
                     tag = "/neg"
                 else:
                     tag = "/neu"
-                print(text + "(" + tag + ")")
+                #print(text + "(" + tag + ")")
                 framems = (int(end)-int(start))//6
                 classlist= []
                 for framecount in range(0,6):
