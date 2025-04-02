@@ -23,10 +23,9 @@ LARGEFONT = ("Verdana", 35)
 
 model = YOLO("best.pt")
 global userid
-global faces
-global tags
 global filename
-bool = False
+
+# Load Haar Classifier for face detection
 face_cascade_name = ".\\face.xml"  # args.face_cascade
 eyes_cascade_name = ".\\eyes.xml"  # args.eyes_cascade
 face_cascade = cv.CascadeClassifier()
@@ -37,86 +36,115 @@ if not face_cascade.load(cv.samples.findFile(face_cascade_name)):
 if not eyes_cascade.load(cv.samples.findFile(eyes_cascade_name)):
     print('--(!)Error loading eyes cascade')
     exit(0)
+
 def browsercallback():
     global buttonClick
     buttonClick = not buttonClick
 buttonClick = False
 
 
-def detectAndDisplay(screen,framename):
+def detect_and_display(screen):
+    """
+    Input:
+    -screen: a frame from the video
+    Output:
+    -classlist: a list of rectangles encompassing faces
+    """
     classlist = []
 
-
-    screen_gray = cv.cvtColor(screen, cv.COLOR_BGR2GRAY)
+    #Prep images and use Haar Classifier for face detection
+    screen_gray = cv.cvtColor(screen, cv.COLOR_BGR2GRAY) # Convert to grayscale
     screen_gray = cv.equalizeHist(screen_gray)
     faces = face_cascade.detectMultiScale(screen_gray)
+
     if any(map(len, faces)):
+        # Picks the largest face in the picture by sorting the face list
         largest_face = max(faces, key=lambda f: f[2] * f[3])
         x, y, w, h = largest_face
         frame = screen.copy()
+
+        #Cuts a square frame around the face
         dim = min(w,h)
         frame = frame[y:y + dim, x:x + dim]
+
+        #Resize face to prep for CNN
         if dim != 48:
             if dim < 48:
                 frame = cv.resize(frame, (48, 48), interpolation=cv.INTER_LINEAR)
             else:
                 frame = cv.resize(frame, (48, 48), interpolation=cv.INTER_AREA)
-
         frame = cv.resize(frame, (48, 48), interpolation=cv.INTER_LINEAR)
-        #print (framename)
+
+        #Run CNN model and gather results
         results = model(frame)
         r = results[0]
         classes = r.boxes.cls.tolist()
+
+        #Collect classes into list
         for g in range(len(classes)):
             class_id = classes[g]
-            #print(class_id)
             classlist.append(class_id)
         return classlist
-for item in os.listdir("."):
-    if item.endswith(".srt") or item.endswith(".txt") or item.endswith(".json") or item.endswith(".tsv") or item.endswith(".vtt"):
-        os.remove(item)
+
+
 def process():
+    """
+    Input: none (reads files)
+    Output:
+    -returndic: a dictionary of phrases with tone tags and facial emotions
+    """
     returndic = []
+
+    #Process videos
     for vid in os.listdir('videos'):
+
+        # Extract mp3 files from mp4 videos
         vidmp3 = (vid[:-4])+'.mp3'
         mp3_conversion_command = 'ffmpeg -y -i '+os.path.join('videos', vid)+' -vn -acodec mp3 '+os.path.join('audios',vidmp3)
         os.system(mp3_conversion_command)
-        speech_recognition_command = "python -m whisper "+os.path.join('audios',vidmp3)+" --model medium --language en"
+
+        # Extract speech from mp3 file
+        speech_recognition_command = "python.exe -m whisper "+os.path.join('audios',vidmp3)+" --model medium --language en"
         os.system(speech_recognition_command)
+
+        # Load video into OpenCV
         cam = cv2.VideoCapture(os.path.join('videos',vid))
-        fps = cam.get(cv2.CAP_PROP_FPS)
         vidtsv=(vid[:-4])+'.tsv'
         with open(vidtsv) as f:
             next(f)
             counter = 0
             for line in f:
-                (start, end, text) = line.strip().split("\t")
-                sentiment_dict = sid_obj.polarity_scores(text)
+                (start, end, text) = line.strip().split("\t") # Grab timestamps for each line in the video
+                sentiment_dict = sid_obj.polarity_scores(text) # Produce text sentiments from sentiment analysis
                 if sentiment_dict['compound'] > 0:
                     tag = "/pos"
                 elif sentiment_dict['compound'] < 0:
                     tag = "/neg"
                 else:
                     tag = "/neu"
-                #print(text + "(" + tag + ")")
                 framems = (int(end)-int(start))//6
                 classlist= []
-                for framecount in range(0,6):
-                    cam.set(cv2.CAP_PROP_POS_MSEC, int(start)+((framems)*framecount))
+                for framecount in range(0,6): # Analyses 6 frames per phrase
+                    cam.set(cv2.CAP_PROP_POS_MSEC, int(start)+(framems*framecount))
                     success, image = cam.read()
-                    framename = (str(counter)+ str(framecount) + ".jpg")
-                    if detectAndDisplay(image,framename):
-                        classlist = classlist + detectAndDisplay(image,framename)
+                    if detect_and_display(image):
+                        classlist = classlist + detect_and_display(image)
                 counter += 1
-                classmode = max(set(classlist), key=classlist.count)
+                classmode = max(set(classlist), key=classlist.count) # Select emotion which occurs most
+                # Compile each line into phrase, text sentiment, and face emotion
                 phraseitem = {"tone" : tag, "phrase" : text, "facial" : classmode}
                 returndic.append(phraseitem)
     return returndic
 
-class tkinterApp(tk.Tk):
+# Removes excess subtitle files from calling whisper
+for item in os.listdir("."):
+    if item.endswith(".srt") or item.endswith(".txt") or item.endswith(".json") or item.endswith(".tsv") or item.endswith(".vtt"):
+        os.remove(item)
+
+class TkInterApp(tk.Tk):
 
 
-    # __init__ function for class tkinterApp
+    # __init__ function for class TkInterApp
     def __init__(self, *args, **kwargs):
         # __init__ function for class Tk
         tk.Tk.__init__(self, *args, **kwargs)
@@ -133,7 +161,7 @@ class tkinterApp(tk.Tk):
 
         # iterating through a tuple consisting
         # of the different page layouts
-        for F in (StartPage, Page1, signed_in, program_options, about, history, runwindow):
+        for F in (StartPage, Page1, SignedIn, ProgramOptions, About, History, RunWindow):
             frame = F(container, self)
 
             # initializing frame of that object from
@@ -225,7 +253,7 @@ class Page1(tk.Frame):
         # button to show frame 2 with text
         # layout2
         button1 = ttk.Button(self, text="Skip",
-                             command=lambda: controller.show_frame(signed_in))
+                             command=lambda: controller.show_frame(SignedIn))
 
 
         # putting the button in its place
@@ -256,7 +284,7 @@ class Page1(tk.Frame):
             PlaySound('LBT.wav', SND_FILENAME)
         if username == "admin" and password == "homunculus":
             userid = username
-            controller.show_frame(signed_in)
+            controller.show_frame(SignedIn)
 
         else:
             messagebox.showerror("Error", "Incorrect username or password")
@@ -264,7 +292,7 @@ class Page1(tk.Frame):
 
 
 
-class signed_in(tk.Frame):
+class SignedIn(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         tk.Frame.configure(self, background='white')
@@ -290,18 +318,18 @@ class signed_in(tk.Frame):
         menulabel.image = loadmenu
         menulabel.place(relx=0.5, rely=0.4, anchor='center')
 
-        historybutton = tk.Button(self, image=loadhistory, command = lambda : controller.show_frame(history),bg = 'white', border = '0', cursor = 'hand2')
+        historybutton = tk.Button(self, image=loadhistory, command = lambda : controller.show_frame(History), bg ='white', border ='0', cursor ='hand2')
         historybutton.image = loadhistory
         historybutton.place(relx=0.5, rely=0.65, anchor='center')
 
-        runprogbutton = tk.Button(self,image=loadrunprog, command = lambda : controller.show_frame(program_options), bg = 'white', border = '0', cursor = 'hand2')
+        runprogbutton = tk.Button(self, image=loadrunprog, command = lambda : controller.show_frame(ProgramOptions), bg ='white', border ='0', cursor ='hand2')
         runprogbutton.image = loadrunprog
         runprogbutton.place(relx=0.5, rely=0.75, anchor='center')
 
         openabout = Image.open("about.png")
         resizeabout = openabout.resize((300, 40))
         loadabout = ImageTk.PhotoImage(resizeabout)
-        aboutlabel = tk.Button(self, image=loadabout, command = lambda : controller.show_frame(about), bg='white', border='0', cursor='hand2')
+        aboutlabel = tk.Button(self, image=loadabout, command = lambda : controller.show_frame(About), bg='white', border='0', cursor='hand2')
         aboutlabel.image = loadabout
         aboutlabel.image = loadabout
         aboutlabel.place(relx=0.5, rely=0.55, anchor='center')
@@ -314,7 +342,7 @@ class signed_in(tk.Frame):
         signoutbutton.image = loadsignout
         signoutbutton.place(relx=0.19, rely=0.94, anchor='center')
 
-class program_options(tk.Frame):
+class ProgramOptions(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         tk.Frame.configure(self, background='white')
@@ -357,21 +385,21 @@ class program_options(tk.Frame):
         cloudlabel.place(relx=0.51, rely=0.37, anchor='center')
         cloudlabel.lower()
 
-        runlabel = tk.Button(self, image = loadrun, command = lambda : controller.show_frame(runwindow), bg = 'white', border = '0', cursor = 'hand2')
+        runlabel = tk.Button(self, image = loadrun, command = lambda : controller.show_frame(RunWindow), bg ='white', border ='0', cursor ='hand2')
         runlabel.image = loadrun
         runlabel.place(relx=0.5, rely=0.64, anchor='center')
 
         openback = Image.open("back.png")
         resizeback = openback.resize((70, 30))
         loadback = ImageTk.PhotoImage(resizeback)
-        backbutton = tk.Button(self, image=loadback, command=lambda: controller.show_frame(signed_in), bg='white',
+        backbutton = tk.Button(self, image=loadback, command=lambda: controller.show_frame(SignedIn), bg='white',
                                border='0', cursor='hand2')
         backbutton.image = loadback
         backbutton.place(relx=0.5, rely=0.95, anchor='center')
 
 
 
-class runwindow(tk.Frame):
+class RunWindow(tk.Frame):
 
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
@@ -379,17 +407,15 @@ class runwindow(tk.Frame):
         dicList = process() #homunculus
         self.processDic(dicList)
 
-    def processDic(self, dicList):
+    def processDic(self, dic_list):
         strcat = ""
-        for item in dicList:
-            emo = 0
-            if item["tone"] == "/neg":
-                emo = -float(item["facial"]+1)
-            elif item["tone"] == "/pos":
-                emo = item["facial"]+1
+        for token in dic_list:
+            if token["tone"] == "/neg":
+                emo = -float(token["facial"]+1)
+            elif token["tone"] == "/pos":
+                emo = token["facial"]+1
             else:
-                emo = 1.5+float(item["facial"])
-            compound = None
+                emo = 1.5+float(token["facial"])
             match emo:
                 case -1.0:
                     compound = "Anger"
@@ -435,9 +461,7 @@ class runwindow(tk.Frame):
                     compound = "positive neutral"
                 case _:
                     compound = "no face"
-            strcat = strcat+item["phrase"]+" ("+compound+")\n"
-      #  print(strcat)
-        #print(item["tone"]+','+str(item["facial"])+','+item["phrase"])
+            strcat = strcat+token["phrase"]+" ("+compound+")\n"
         whole = tk.Label(self, text = strcat, fg = 'black', bg = 'white', justify = tk.LEFT, border = '0', wraplength = 500)
         whole.place(relx=0.5, rely=0.1, anchor='center')
 
@@ -445,7 +469,7 @@ class runwindow(tk.Frame):
 
 
 
-class about(tk.Frame):
+class About(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         tk.Frame.configure(self, background='white')
@@ -460,11 +484,11 @@ class about(tk.Frame):
         openback = Image.open("back.png")
         resizeback = openback.resize((70, 30))
         loadback = ImageTk.PhotoImage(resizeback)
-        backbutton = tk.Button(self, image = loadback, command = lambda : controller.show_frame(signed_in), bg = 'white', border = '0', cursor = 'hand2')
+        backbutton = tk.Button(self, image = loadback, command = lambda : controller.show_frame(SignedIn), bg ='white', border ='0', cursor ='hand2')
         backbutton.image = loadback
         backbutton.place(relx=0.5, rely=0.95, anchor='center')
 
-class history(tk.Frame):
+class History(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         tk.Frame.configure(self, background='white')
@@ -478,19 +502,19 @@ class history(tk.Frame):
         openback = Image.open("back.png")
         resizeback = openback.resize((70, 30))
         loadback = ImageTk.PhotoImage(resizeback)
-        backbutton = tk.Button(self, image = loadback, command = lambda : controller.show_frame(signed_in), bg = 'white', border = '0', cursor = 'hand2')
+        backbutton = tk.Button(self, image = loadback, command = lambda : controller.show_frame(SignedIn), bg ='white', border ='0', cursor ='hand2')
         backbutton.image = loadback
         backbutton.place(relx=0.5, rely=0.95, anchor='center')
 
 
 
 # Driver Code
-app = tkinterApp()
+app = TkInterApp()
 #label_file_explorer = tk.Label(app, text = "File Explorer using Tkinter", width = 100, height = 4, fg = "blue")
 app.geometry("500x500")
 app.configure(background='white')
 icon1 = Image.open("icon.png")
-img = ImageTk.PhotoImage(icon1)
+#img = ImageTk.PhotoImage(icon1)
 app.title("Joke Light")
 app.iconbitmap(default="icon.ico")
 
